@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Team</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563EB;
+            --secondary: #059669;
+            --background: #F9FAFB;
+            --card-bg: #FFFFFF;
+            --text: #1F2937;
+            --column-bg: #E5E7EB;
+        }
+        [data-theme="dark"] {
+            --primary: #60A5FA;
+            --secondary: #34D399;
+            --background: #111827;
+            --card-bg: #1F2937;
+            --text: #F9FAFB;
+            --column-bg: #374151;
+        }
+        body {
+            background: var(--background);
+            color: var(--text);
+            transition: all 0.3s ease;
+        }
+        .kanban-column {
+            min-height: 400px;
+            background: var(--column-bg);
+            border-radius: 0.5rem;
+        }
+        .task-card {
+            background: var(--card-bg);
+            color: var(--text);
+            border: 1px solid rgba(0,0,0,0.1);
+            cursor: grab;
+            user-select: none;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+        }
+        .task-card:active {
+            cursor: grabbing;
+        }
+        .task-card.warning {
+            border-left: 4px solid #F59E0B;
+        }
+        .task-card.danger {
+            border-left: 4px solid #EF4444;
+        }
+        #taskModal {
+            background: rgba(0,0,0,0.5);
+        }
+        input, textarea, select {
+            background: var(--card-bg);
+            color: var(--text);
+            border: 1px solid var(--column-bg);
+        }
+        .dark input, .dark textarea, .dark select {
+            border: 1px solid #4B5563;
+        }
+        .dropzone {
+            min-height: 300px;
+        }
+        .dropzone.dragover {
+            background: #D1D5DB;
+            transition: background 0.2s ease;
+        }
+        .dark .dropzone.dragover {
+            background: #4B5563;
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans">
+    <div id="app" class="container mx-auto p-4">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-6">
+            <div class="flex items-center">
+                <img src="https://cdn-icons-png.flaticon.com/512/2659/2659360.png" alt="Logo" class="w-12 h-12 mr-2">
+                <h1 class="text-2xl font-bold">Kanban Team</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button id="themeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button id="muteToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700" title="Activar/Desactivar sonido">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+                <button id="logoutBtn" class="bg-red-500 text-white px-4 py-2 rounded hidden">Cerrar Sesión</button>
+            </div>
+        </header>
+
+        <!-- Login/Register -->
+        <div id="authContainer" class="max-w-md mx-auto">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                <div class="flex justify-between mb-4">
+                    <button id="loginTab" class="font-bold">Iniciar Sesión</button>
+                    <button id="registerTab" class="font-bold">Registrarse</button>
+                </div>
+                <form id="authForm">
+                    <input type="email" id="email" class="w-full p-2 mb-4 border rounded" placeholder="Email" required>
+                    <input type="password" id="password" class="w-full p-2 mb-4 border rounded" placeholder="Contraseña" required>
+                    <input type="text" id="username" class="w-full p-2 mb-4 border rounded hidden" placeholder="Nombre de usuario">
+                    <button type="submit" id="authBtn" class="w-full bg-blue-500 text-white p-2 rounded">Iniciar Sesión</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Kanban Board -->
+        <div id="kanbanBoard" class="hidden">
+            <button id="addTaskBtn" class="bg-green-500 text-white px-4 py-2 rounded mb-4">+ Nueva Tarea</button>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="kanban-column p-4" data-status="todo">
+                    <h2 class="text-xl font-bold mb-4">Por Hacer</h2>
+                    <div class="tasks dropzone" data-status="todo"></div>
+                </div>
+                <div class="kanban-column p-4" data-status="inprogress">
+                    <h2 class="text-xl font-bold mb-4">En Proceso</h2>
+                    <div class="tasks dropzone" data-status="inprogress"></div>
+                </div>
+                <div class="kanban-column p-4" data-status="completed">
+                    <h2 class="text-xl font-bold mb-4">Completado</h2>
+                    <div class="tasks dropzone" data-status="completed"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para crear/editar tarea -->
+        <div id="taskModal" class="fixed inset-0 hidden flex items-center justify-center">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md">
+                <h2 id="modalTitle" class="text-xl font-bold mb-4">Nueva Tarea</h2>
+                <form id="taskForm">
+                    <input type="text" id="taskTitle" class="w-full p-2 mb-4 border rounded" placeholder="Título" required>
+                    <textarea id="taskDescription" class="w-full p-2 mb-4 border rounded" placeholder="Descripción" required></textarea>
+                    <select id="taskAssignedTo" class="w-full p-2 mb-4 border rounded" required multiple>
+                        <option value="">Selecciona usuarios</option>
+                    </select>
+                    <input type="date" id="taskDueDate" class="w-full p-2 mb-4 border rounded" required>
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" id="cancelTask" class="px-4 py-2 bg-gray-300 rounded">Cancelar</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Audio para fanfarrias -->
+        <audio id="fanfareSound" src="https://www.myinstants.com/media/sounds/fanfare.mp3" preload="auto"></audio>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDx--5q4eDfJ-lamxJKijapfakEEWm3thw",
+            authDomain: "kanban-7f6bb.firebaseapp.com",
+            projectId: "kanban-7f6bb",
+            storageBucket: "kanban-7f6bb.firebasestorage.app",
+            messagingSenderId: "298547778455",
+            appId: "1:298547778455:web:7e12ffbf245a6080356ad2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getFirestore();
+
+        // Elementos DOM
+        const authContainer = document.getElementById('authContainer');
+        const kanbanBoard = document.getElementById('kanbanBoard');
+        const authForm = document.getElementById('authForm');
+        const authBtn = document.getElementById('authBtn');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const usernameInput = document.getElementById('username');
+        const loginTab = document.getElementById('loginTab');
+        const registerTab = document.getElementById('registerTab');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const addTaskBtn = document.getElementById('addTaskBtn');
+        const themeToggle = document.getElementById('themeToggle');
+        const muteToggle = document.getElementById('muteToggle');
+        const taskModal = document.getElementById('taskModal');
+        const taskForm = document.getElementById('taskForm');
+        const taskTitle = document.getElementById('taskTitle');
+        const taskDescription = document.getElementById('taskDescription');
+        const taskAssignedTo = document.getElementById('taskAssignedTo');
+        const taskDueDate = document.getElementById('taskDueDate');
+        const cancelTask = document.getElementById('cancelTask');
+        const modalTitle = document.getElementById('modalTitle');
+        const fanfareSound = document.getElementById('fanfareSound');
+
+        let isLogin = true;
+        let editingTaskId = null;
+        let users = [];
+        let isMuted = false; // Estado inicial: sonido activado
+
+        // Tema claro/oscuro
+        themeToggle.addEventListener('click', () => {
+            document.documentElement.dataset.theme = 
+                document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            themeToggle.querySelector('i').classList.toggle('fa-moon');
+            themeToggle.querySelector('i').classList.toggle('fa-sun');
+        });
+
+        // Botón de mute/unmute
+        muteToggle.addEventListener('click', () => {
+            isMuted = !isMuted;
+            const icon = muteToggle.querySelector('i');
+            icon.classList.toggle('fa-volume-up');
+            icon.classList.toggle('fa-volume-mute');
+            console.log('Sonido:', isMuted ? 'Silenciado' : 'Activado');
+        });
+
+        // Autenticación
+        loginTab.addEventListener('click', () => {
+            isLogin = true;
+            authBtn.textContent = 'Iniciar Sesión';
+            usernameInput.classList.add('hidden');
+        });
+
+        registerTab.addEventListener('click', () => {
+            isLogin = false;
+            authBtn.textContent = 'Registrarse';
+            usernameInput.classList.remove('hidden');
+        });
+
+        authForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            const username = usernameInput.value;
+
+            if (isLogin) {
+                signInWithEmailAndPassword(auth, email, password)
+                    .catch(error => alert(error.message));
+            } else {
+                createUserWithEmailAndPassword(auth, email, password)
+                    .then((userCredential) => {
+                        const user = userCredential.user;
+                        addDoc(collection(db, 'users'), {
+                            uid: user.uid,
+                            email: email,
+                            username: username || email.split('@')[0],
+                            createdAt: new Date().toISOString()
+                        });
+                    })
+                    .catch(error => alert(error.message));
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => signOut(auth));
+
+        // Estado de autenticación
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                authContainer.classList.add('hidden');
+                kanbanBoard.classList.remove('hidden');
+                logoutBtn.classList.remove('hidden');
+                loadUsers();
+                loadTasks();
+            } else {
+                authContainer.classList.remove('hidden');
+                kanbanBoard.classList.add('hidden');
+                logoutBtn.classList.add('hidden');
+            }
+        });
+
+        // Cargar usuarios
+        function loadUsers() {
+            onSnapshot(collection(db, 'users'), (snapshot) => {
+                users = [];
+                taskAssignedTo.innerHTML = '<option value="">Selecciona usuarios</option>';
+                snapshot.forEach(doc => {
+                    const user = { id: doc.id, ...doc.data() };
+                    users.push(user);
+                    const option = document.createElement('option');
+                    option.value = user.uid;
+                    option.textContent = user.username;
+                    taskAssignedTo.appendChild(option);
+                });
+            });
+        }
+
+        // Crear tarjeta de tarea
+        function createTaskCard(task) {
+            const daysLeft = Math.ceil((new Date(task.dueDate) - new Date()) / (1000 * 60 * 60 * 24));
+            const daysPending = Math.ceil((new Date() - new Date(task.createdAt)) / (1000 * 60 * 60 * 24));
+            let statusClass = '';
+            if (daysLeft <= 3) statusClass = 'danger';
+            else if (daysLeft <= 7) statusClass = 'warning';
+
+            const assignedNames = task.assignedTo.map(uid => {
+                const user = users.find(u => u.uid === uid);
+                return user ? user.username : 'Desconocido';
+            }).join(', ');
+
+            const card = document.createElement('div');
+            card.className = `task-card ${statusClass}`;
+            card.draggable = true;
+            card.dataset.id = task.id;
+            card.innerHTML = `
+                <h3 class="font-bold">${task.title}</h3>
+                <p class="text-sm">${task.description}</p>
+                <p class="text-sm">Asignado a: ${assignedNames}</p>
+                <p class="text-sm">Inicio: ${new Date(task.createdAt).toLocaleDateString()}</p>
+                <p class="text-sm">Vence: ${new Date(task.dueDate).toLocaleDateString()}</p>
+                <p class="text-sm">Días restantes: ${daysLeft}</p>
+                <p class="text-sm">Días pendiente: ${daysPending}</p>
+                <div class="mt-2">
+                    <button class="edit-btn text-blue-500 mr-2"><i class="fas fa-edit"></i></button>
+                    <button class="delete-btn text-red-500"><i class="fas fa-trash"></i></button>
+                    <button class="comment-btn text-gray-500"><i class="fas fa-comment"></i></button>
+                </div>
+                <div class="comments mt-2 hidden">
+                    <textarea class="w-full p-2 border rounded" placeholder="Añadir comentario"></textarea>
+                    <button class="save-comment bg-blue-500 text-white px-2 py-1 rounded mt-1">Guardar</button>
+                </div>
+            `;
+
+            card.addEventListener('dragstart', (e) => {
+                console.log('Drag start:', task.id);
+                e.dataTransfer.setData('text/plain', task.id);
+                card.classList.add('opacity-50');
+            });
+            card.addEventListener('dragend', (e) => {
+                console.log('Drag end:', task.id);
+                card.classList.remove('opacity-50');
+            });
+
+            card.querySelector('.edit-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                editTask(task);
+            });
+            card.querySelector('.delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteTask(task.id);
+            });
+            card.querySelector('.comment-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                card.querySelector('.comments').classList.toggle('hidden');
+            });
+            card.querySelector('.save-comment').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const comment = card.querySelector('textarea').value;
+                if (comment) {
+                    const updatedComments = task.comments ? [...task.comments, { text: comment, date: new Date().toISOString() }] : [{ text: comment, date: new Date().toISOString() }];
+                    updateDoc(doc(db, 'tasks', task.id), { comments: updatedComments });
+                }
+            });
+
+            return card;
+        }
+
+        // Agregar tarea
+        addTaskBtn.addEventListener('click', () => {
+            editingTaskId = null;
+            modalTitle.textContent = 'Nueva Tarea';
+            taskForm.reset();
+            taskModal.classList.remove('hidden');
+        });
+
+        cancelTask.addEventListener('click', () => {
+            taskModal.classList.add('hidden');
+        });
+
+        taskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const title = taskTitle.value;
+            const description = taskDescription.value;
+            const assignedTo = Array.from(taskAssignedTo.selectedOptions).map(opt => opt.value);
+            const dueDate = taskDueDate.value;
+
+            const taskData = {
+                title,
+                description,
+                assignedTo,
+                dueDate,
+            };
+
+            if (editingTaskId) {
+                updateDoc(doc(db, 'tasks', editingTaskId), taskData)
+                    .then(() => console.log('Tarea actualizada'))
+                    .catch(error => console.error('Error al actualizar tarea:', error));
+            } else {
+                taskData.status = 'todo';
+                taskData.createdAt = new Date().toISOString();
+                taskData.comments = [];
+                addDoc(collection(db, 'tasks'), taskData)
+                    .then(() => console.log('Tarea creada'))
+                    .catch(error => console.error('Error al crear tarea:', error));
+            }
+
+            taskModal.classList.add('hidden');
+        });
+
+        function editTask(task) {
+            editingTaskId = task.id;
+            modalTitle.textContent = 'Editar Tarea';
+            taskTitle.value = task.title;
+            taskDescription.value = task.description;
+            taskDueDate.value = task.dueDate.split('T')[0];
+            Array.from(taskAssignedTo.options).forEach(option => {
+                option.selected = task.assignedTo.includes(option.value);
+            });
+            taskModal.classList.remove('hidden');
+        }
+
+        function deleteTask(id) {
+            if (confirm('¿Seguro que quieres eliminar esta tarea?')) {
+                deleteDoc(doc(db, 'tasks', id))
+                    .then(() => console.log('Tarea eliminada'))
+                    .catch(error => console.error('Error al eliminar tarea:', error));
+            }
+        }
+
+        // Función para reproducir el sonido
+        function playFanfare() {
+            if (isMuted) {
+                console.log('Sonido silenciado, no se reproduce');
+                return;
+            }
+            console.log('Intentando reproducir fanfarrias');
+            fanfareSound.currentTime = 0; // Reinicia el audio
+            fanfareSound.play()
+                .then(() => console.log('Sonido reproducido con éxito'))
+                .catch(error => console.error('Error al reproducir sonido:', error.message));
+        }
+
+        // Cargar tareas y configurar drag-and-drop
+        function loadTasks() {
+            const dropzones = {
+                todo: document.querySelector('[data-status="todo"] .dropzone'),
+                inprogress: document.querySelector('[data-status="inprogress"] .dropzone'),
+                completed: document.querySelector('[data-status="completed"] .dropzone')
+            };
+
+            // Configurar eventos de dropzones
+            Object.values(dropzones).forEach(zone => {
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    console.log('Drag over:', zone.dataset.status);
+                    zone.classList.add('dragover');
+                });
+                zone.addEventListener('dragleave', () => {
+                    console.log('Drag leave:', zone.dataset.status);
+                    zone.classList.remove('dragover');
+                });
+                zone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const taskId = e.dataTransfer.getData('text/plain');
+                    const newStatus = zone.dataset.status;
+                    console.log('Drop:', taskId, 'to', newStatus);
+                    if (taskId && newStatus) {
+                        updateDoc(doc(db, 'tasks', taskId), { status: newStatus })
+                            .then(() => {
+                                console.log(`Tarea ${taskId} movida a ${newStatus}`);
+                                if (newStatus === 'completed') {
+                                    playFanfare();
+                                    alert('¡Felicidades, has completado la tarea!');
+                                }
+                            })
+                            .catch(error => console.error('Error al mover tarea:', error));
+                    }
+                    zone.classList.remove('dragover');
+                });
+            });
+
+            // Escuchar cambios en las tareas
+            onSnapshot(collection(db, 'tasks'), (snapshot) => {
+                Object.values(dropzones).forEach(zone => zone.innerHTML = '');
+
+                snapshot.forEach(doc => {
+                    const task = { id: doc.id, ...doc.data() };
+                    const zone = dropzones[task.status];
+                    if (zone) {
+                        const card = createTaskCard(task);
+                        zone.appendChild(card);
+                    }
+                });
+            }, (error) => {
+                console.error('Error al cargar tareas:', error);
+            });
+        }
+
+        // Pre-cargar el audio al iniciar
+        window.addEventListener('load', () => {
+            console.log('Cargando audio...');
+            fanfareSound.load();
+            fanfareSound.muted = false; // Asegura que no esté silenciado por defecto
+        });
+    </script>
+</body>
+</html>
